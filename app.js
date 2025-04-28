@@ -1,20 +1,25 @@
+const path = require('path');
+
 const express = require('express');
+const bodyParser = require('body-parser');
+
+const errorController = require('./controllers/error');
+const db = require('./util/database');
 
 const app = express();
 
-app.use('/', (req, res, next) => {
-    console.log('This always runs!');
-    next();
-});
+app.set('view engine', 'ejs');
+app.set('views', 'views');
 
-app.use('/add-product', (req, res, next) => {
-  console.log('In another middleware!');
-  res.send('<h1>The "Add Product" Page</h1>');
-});
+const adminRoutes = require('./routes/admin');
+const shopRoutes = require('./routes/shop');
 
-app.use('/', (req, res, next) => {
-  console.log('In another middleware!');
-  res.send('<h1>Hello from Express!</h1>');
-});
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(4000);
+app.use('/admin', adminRoutes);
+app.use(shopRoutes);
+
+app.use(errorController.get404);
+
+app.listen(3000);
