@@ -1,0 +1,95 @@
+openapi: 3.0.0
+info:
+  title: GraphQL API
+  description: API Documentation for GraphQL endpoints
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Development server
+paths:
+  /graphql:
+    post:
+      summary: GraphQL endpoint
+      description: Endpoint for all GraphQL operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                  description: GraphQL query or mutation
+                variables:
+                  type: object
+                  description: Variables for the GraphQL query
+            examples:
+              basicQuery:
+                summary: Basic query example
+                value:
+                  query: "{ __schema { types { name } } }"
+                  variables: {}
+              userQuery:
+                summary: Query user example
+                value:
+                  query: "query { user(id: \"123\") { id name email } }"
+                  variables: {}
+              createUserMutation:
+                summary: Create user mutation example
+                value:
+                  query: "mutation($userInput: UserInputData) { createUser(userInput: $userInput) { id name email } }"
+                  variables: { 
+                    "userInput": { 
+                      "email": "test@example.com", 
+                      "name": "Test User", 
+                      "password": "password123" 
+                    } 
+                  }
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+  /protected:
+    get:
+      summary: Protected route example
+      description: An example of a protected route requiring authentication
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  userId:
+                    type: string
+        '401':
+          description: Unauthorized
+  /:
+    get:
+      summary: Welcome route
+      description: Base route returning welcome message
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

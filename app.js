@@ -1,88 +1,77 @@
-const path = require('path');
 const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const multer = require('multer');
-const fs = require('fs');
-
-const feedRoutes = require('./routes/feed');
-const authRoutes = require('./routes/auth');
+const graphqlHttp = require('express-graphql').graphqlHTTP;
+const graphqlSchema = require('./graphql/schema');
+const graphqlResolvers = require('./graphql/resolvers');
+const jwt = require('jsonwebtoken');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const path = require('path');
 
 const app = express();
 
-// Create images directory if it doesn't exist
-const imagesDir = path.join(__dirname, 'images');
-if (!fs.existsSync(imagesDir)) {
-  fs.mkdirSync(imagesDir, { recursive: true });
-  console.log('Images directory created');
-}
+// Load Swagger document
+const swaggerDocument = YAML.load(path.join(__dirname, 'swagger.yaml'));
 
-const fileStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'images');
-  },
-  filename: (req, file, cb) => {
-    // Replace colons in ISO string to avoid file system errors
-    const dateStr = new Date().toISOString().replace(/:/g, '-');
-    cb(null, dateStr + '-' + file.originalname);
-  }
-});
+app.use(bodyParser.json());
 
-const fileFilter = (req, file, cb) => {
-  if (
-    file.mimetype === 'image/png' ||
-    file.mimetype === 'image/jpg' ||
-    file.mimetype === 'image/jpeg'
-  ) {
-    cb(null, true);
-  } else {
-    cb(null, false);
-  }
-};
+// Swagger UI setup
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-// app.use(bodyParser.urlencoded()); // x-www-form-urlencoded <form>
-app.use(bodyParser.json()); // application/json
-app.use(
-  multer({ storage: fileStorage, fileFilter: fileFilter }).single('image')
-);
-app.use('/images', express.static(path.join(__dirname, 'images')));
-
-// CORS and Response Headers Setup
+// Auth middleware
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader(
-    'Access-Control-Allow-Methods',
-    'OPTIONS, GET, POST, PUT, PATCH, DELETE'
-  );
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+  const authHeader = req.get('Authorization');
+  if (!authHeader) {
+    req.isAuth = false;
+    return next();
   }
-  
+  const token = authHeader.split(' ')[1];
+  try {
+    const decodedToken = jwt.verify(token, 'somesupersecretsecret');
+    req.userId = decodedToken.userId;
+    req.isAuth = true;
+  } catch (err) {
+    req.isAuth = false;
+  }
   next();
 });
 
-app.use('/feed', feedRoutes);
-app.use('/auth', authRoutes);
+// GraphQL endpoint
+app.use('/graphql', graphqlHttp({
+  schema: graphqlSchema,
+  rootValue: graphqlResolvers,
+  graphiql: true,
+}));
 
-app.use((error, req, res, next) => {
-  console.log(error);
-  const status = error.statusCode || 500;
-  const message = error.message;
-  const data = error.data;
-  res.status(status).json({ message: message, data: data });
+// Test routes (optional)
+app.get('/protected', (req, res) => {
+  if (!req.isAuth) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  res.json({ message: 'You accessed a protected route', userId: req.userId });
 });
 
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the API' });
+});
+
+// Start the server regardless of MongoDB connection
+app.listen(8080, () => {
+  console.log('Server running on port 8080');
+  console.log('Swagger documentation available at http://localhost:8080/api-docs');
+});
+
+// Attempt to connect to MongoDB
 mongoose
-  .connect(
-    'mongodb+srv://mani:bIguvkQ6oyVrywjl@cluster0.9qpnjkp.mongodb.net/messages?retryWrites=true'
-  )
-  .then(result => {
-    console.log('Connected to MongoDB');
-    app.listen(8080, () => {
-      console.log('Server running on port 8080');
-    });
+  .connect('mongodb+srv://mani:bIguvkQ6oyVrywjl@cluster0.9qpnjkp.mongodb.net/', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
   })
-  .catch(err => console.log(err));
+  .then(() => {
+    console.log('Connected to MongoDB Atlas');
+  })
+  .catch(err => {
+    console.log('MongoDB connection error. Please make sure MongoDB is running and your IP is whitelisted.');
+    console.log(err);
+  });
